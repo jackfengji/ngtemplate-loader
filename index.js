@@ -1,4 +1,5 @@
 var loaderUtils = require("loader-utils");
+var fs = require('fs');
 var path = require('path');
 var jsesc = require('jsesc');
 
@@ -6,7 +7,7 @@ module.exports = function (content) {
     this.cacheable && this.cacheable();
 
     var query = loaderUtils.parseQuery(this.query);
-    var ngModule = query.module || 'ng'; // ng is the global angular module that does not need to explicitly required
+    var modulePrefix = query.modulePrefix || '';
     var relativeTo = query.relativeTo || '';
     var prefix = query.prefix || '';
     var absolute = false;
@@ -48,6 +49,32 @@ module.exports = function (content) {
         html = content;
     }
 
+    var moduleDir = path.dirname(resource);
+    var moduleFile = null;
+    while (moduleDir.indexOf(relativeTo) !== -1) {
+        fs.readdirSync(moduleDir).forEach(function (filename) {
+            if (endsWith(filename, '.module.js')) {
+                if (moduleFile) {
+                    throw 'Find two modules file in one directory level';
+                }
+
+                moduleFile = filename;
+            }
+        });
+
+        if (moduleFile) {
+            break;
+        } else {
+            moduleDir = path.dirname(moduleDir);
+        }
+    }
+
+    if (!moduleFile) {
+        throw 'No module file found';
+    }
+
+    var ngModule = modulePrefix + '.' + path.basename(moduleFile, '.module.js');
+
     return "var path = '"+jsesc(filePath)+"';\n" +
         "var html = " + html + ";\n" +
         "window.angular.module('" + ngModule + "').run(['$templateCache', function(c) { c.put(path, html) }]);\n" +
@@ -67,5 +94,9 @@ module.exports = function (content) {
     // source: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions#Using_Special_Characters
     function escapeRegExp(string) {
         return string.replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1");
+    }
+
+    function endsWith(string, suffix) {
+        return string.length >= suffix.length && string.lastIndexOf(suffix) === string.length - suffix.length;
     }
 };
